@@ -56,7 +56,7 @@ echo "10.31.1.141:51436       192.168.0.1:143" > /proc/net/tcp_drop
 
 Now it'dead:
 
-netstat -neo|grep ESTABLISHED|grep 143
+netstat -n|grep ESTABLISHED|grep 143
 tcp        0      0 10.31.1.141:51292       192.168.0.1:143        ESTABLISHED
 tcp        0      0 10.31.1.141:51293       192.168.0.1:143        ESTABLISHED
 
@@ -81,7 +81,7 @@ echo "127.0.0.1:34790         127.0.0.1:8080" > /proc/net/tcp_drop
 
 Let's see:
 
-netstat -neo|grep TIME_WAIT
+netstat -n|grep TIME_WAIT
 
 <nothing here>
 
