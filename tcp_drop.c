@@ -21,30 +21,15 @@
 #include <net/ip.h>
 #include <net/tcp.h>
 #include <net/inet_hashtables.h>
+#include <net/inet6_hashtables.h>
 #include <net/inet_timewait_sock.h>
 
 #define TCP_DROP_PROC "tcp_drop"
 
-static int 
-tcp_drop(const __be32 saddr, __be16 sport,
-         const __be32 daddr, __be16 dport)
+static int
+tcp_drop_sock(struct sock *sk)
 {
-	struct sock        *sk;
 	struct inet_timewait_sock *tw;
-
-#ifdef TCP_DROP_DEBUG
-	printk(KERN_DEBUG "tcp_drop: drop %08X:%04X %08X:%04X\n", 
-			saddr, sport, daddr, dport);
-#endif
-
-	sk = inet_lookup(
-#ifdef CONFIG_NET_NS
-			&init_net, 
-#endif
-			&tcp_hashinfo,
-			daddr, htons(dport), 
-			saddr, htons(sport), 
-			0);
 
 	if (!sk) {
 #ifdef TCP_DROP_DEBUG
@@ -76,15 +61,57 @@ tcp_drop(const __be32 saddr, __be16 sport,
 	}
 
 	return 0;
+
 }
 
 static int 
-parse_addr(char *s, __be32 *addr, __be16 *port)
+tcp_drop_v4(const __be32 saddr, __be16 sport,
+            const __be32 daddr, __be16 dport)
 {
-	char         *p;
-	unsigned long res;
+	struct sock *sk;
 
-	p = strchr(s, ':');
+#ifdef TCP_DROP_DEBUG
+	printk(KERN_DEBUG "tcp_drop: drop %08X:%04X %08X:%04X\n", 
+			saddr, sport, daddr, dport);
+#endif
+
+	sk = inet_lookup(
+#ifdef CONFIG_NET_NS
+			&init_net, 
+#endif
+			&tcp_hashinfo,
+			daddr, htons(dport), 
+			saddr, htons(sport), 
+			0);
+
+	return tcp_drop_sock(sk);
+}
+
+static int 
+tcp_drop_v6(const struct in6_addr *saddr, __be16 sport,
+            const struct in6_addr *daddr, __be16 dport)
+{
+	struct sock *sk;
+
+	sk = inet6_lookup(
+#ifdef CONFIG_NET_NS
+			&init_net, 
+#endif
+			&tcp_hashinfo,
+			daddr, htons(dport), 
+			saddr, htons(sport), 
+			0);
+
+	return tcp_drop_sock(sk);
+}
+
+static int 
+parse_port(char *s, __be16 *port)
+{
+	char           *p;
+	unsigned long   res;
+
+	p = strrchr(s, ':');
 
 	if (!p) {
 		printk(KERN_ERR "tcp_drop: format error\n");
@@ -100,47 +127,70 @@ parse_addr(char *s, __be32 *addr, __be16 *port)
 
 	*port = (__be16)res;
 
-	*addr = in_aton(s);
-
-#ifdef TCP_DROP_DEBUG
-	printk(KERN_DEBUG "tcp_drop: addr %08X:%04X\n", 
-			*addr, *port);
-#endif
-
 	return 0;
 }
 
 static int 
 tcp_drop_a(char *s)
 {
-	char      *p;
-	__be32     saddr, daddr;
-	__be16     sport, dport;
+	char           *d;
+	__be16          sport,  dport;
+	__be32          saddr4, daddr4;
+	struct in6_addr saddr6, daddr6;
 
+	/* split args */
 	if (!s) {
 		printk(KERN_ERR "tcp_drop: null drop string\n");
 		return -1;
 	}
 
-	for(p = s; *p && !isspace(*p); ++p);
+	for(d = s; *d && !isspace(*d); ++d);
 
-	if (!*p) {
+	if (!*d) {
 		printk(KERN_ERR "tcp_drop: need both ends to drop\n");
 		return -1;
 	}
 
-	*p = 0;
+	*d = 0;
 
-	for(++p; *p && isspace(*p); ++p);
+	for(++d; *d && isspace(*d); ++d);
 
-	if (parse_addr(s, &saddr, &sport)
-	    || parse_addr(p, &daddr, &dport))
-	{
-		printk(KERN_ERR "tcp_drop: error parsing addresses\n");
+	/* parse ports */
+	if (parse_port(s, &sport))
 		return -1;
+
+	if (parse_port(d, &dport))
+		return -1;
+
+	/* try ipv4 on both */
+	if (in4_pton(s, -1, &saddr4, '\0', NULL)) {
+
+		if (!in4_pton(d, -1, &daddr4, '\0', NULL))
+			return -1;
+
+#ifdef TCP_DROP_DEBUG
+		printk(KERN_DEBUG "tcp_drop: ipv4 addr %08X:%04X - %08X:%04X\n", 
+			saddr4, sport, daddr4, dport);
+#endif
+
+		return tcp_drop_v4(saddr4, sport, daddr4, dport);
 	}
 
-	return tcp_drop(saddr, sport, daddr, dport);
+	/* try ipv6 on both */
+	if (in6_pton(s, -1, &saddr6, '\0', NULL)) {
+
+		if (!in6_pton(d, -1, &daddr6, '\0', NULL))
+			return -1;
+
+#ifdef TCP_DROP_DEBUG
+	/*	printk(KERN_DEBUG "tcp_drop: ipv6 addr %08X:%04X\n", 
+			*addr, *port);*/
+#endif
+
+		return tcp_drop_v6(&saddr6, sport, &daddr6, dport);
+	}
+
+	return -1;
 }
 
 static int 
@@ -153,6 +203,7 @@ tcp_drop_write_proc(struct file *file, const char __user *buffer,
 	if (count > PAGE_SIZE)
 		return -EOVERFLOW;
 
+	/* TODO: improve allocation */
 	page = (char *)__get_free_page(GFP_KERNEL);
 	if (page) {
 		ret = -EFAULT;
