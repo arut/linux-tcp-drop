@@ -14,7 +14,10 @@
 #include <linux/init.h>
 #include <linux/module.h>
 
+#ifdef CONFIG_NET_NS
 #include <net/net_namespace.h>
+#endif
+
 #include <net/ip.h>
 #include <net/tcp.h>
 #include <net/inet_hashtables.h>
@@ -34,7 +37,11 @@ tcp_drop(const __be32 saddr, __be16 sport,
 			saddr, sport, daddr, dport);
 #endif
 
-	sk = inet_lookup(&init_net, &tcp_hashinfo,
+	sk = inet_lookup(
+#ifdef CONFIG_NET_NS
+			&init_net, 
+#endif
+			&tcp_hashinfo,
 			daddr, htons(dport), 
 			saddr, htons(sport), 
 			0);
@@ -74,7 +81,8 @@ tcp_drop(const __be32 saddr, __be16 sport,
 static int 
 parse_addr(char *s, __be32 *addr, __be16 *port)
 {
-	char *p;
+	char         *p;
+	unsigned long res;
 
 	p = strchr(s, ':');
 
@@ -85,10 +93,12 @@ parse_addr(char *s, __be32 *addr, __be16 *port)
 
 	*p++ = 0;
 
-	if (kstrtou16(p, 10, port) < 0) {
+	if (strict_strtoul(p, 10, &res) < 0) {
 		printk(KERN_ERR "tcp_drop: bad format\n");
 		return -1;
 	}
+
+	*port = (__be16)res;
 
 	*addr = in_aton(s);
 
@@ -169,7 +179,10 @@ tcp_drop_init(void)
 	printk(KERN_DEBUG "tcp_drop: loading\n");
 
 	res = create_proc_entry(TCP_DROP_PROC, S_IWUSR | S_IWGRP, 
-		init_net.proc_net);
+#ifdef CONFIG_NET_NS
+		init_net.
+#endif
+		proc_net);
 
 	if (!res) {
 		printk(KERN_ERR "tcp_drop: unable to register proc file\n");
@@ -188,7 +201,11 @@ tcp_drop_exit(void)
 {
 	printk(KERN_DEBUG "tcp_drop: unloading\n");
 
-	remove_proc_entry(TCP_DROP_PROC, init_net.proc_net);
+	remove_proc_entry(TCP_DROP_PROC, 
+#ifdef CONFIG_NET_NS
+		init_net.
+#endif
+		proc_net);
 }
 
 module_exit(tcp_drop_exit);

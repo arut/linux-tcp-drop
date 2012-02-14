@@ -21,6 +21,20 @@ Requirements:
 
 Linux kernel 3.0.0
 
+Build & install:
+===============
+
+Untar/ungzip & cd to module directory & just run make.
+
+Load module:
+
+sudo insmod ./tcp_drop.ko
+
+Unload module:
+
+sudo rmmod tcp_drop
+
+Note: remember you need root privileges to write to /proc/net/tcp_drop.
 
 Example1:
 ========
