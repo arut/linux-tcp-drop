@@ -62,14 +62,14 @@ tcp        0      0 127.0.0.1:34790         127.0.0.1:8080          TIME_WAIT
 
 Here's how to kill it (it's better to say 'unschedule'):
 
-echo "127.0.0.1:34790         127.0.0.1:8080" > /proc/net/tcp_dro
+echo "127.0.0.1:34790         127.0.0.1:8080" > /proc/net/tcp_drop
 
 
 Let's see:
 
 netstat -neo|grep TIME_WAIT
 
-<no one here>
+<nothing here>
 
 
 What server/client code receives:
