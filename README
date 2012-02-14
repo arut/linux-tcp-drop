@@ -1,0 +1,83 @@
+== Linux tcpdrop support ==
+
+(c) 2012 Roman Arutyunyan <arut@qip.ru>
+
+
+Module:
+======
+This module lets you drop TCP connections from 
+working Linux system. It also supports unscheduling 
+TIME_WAIT sockets.
+
+The module creates pseudo-file /proc/net/tcp_drop
+which expects input of the following format:
+
+saddr:sport daddr:dport
+
+Note: Spaces between the two can be of any type & size.
+
+
+Example1:
+========
+
+We have 4 connected sockets by IMAP client (port 143). Let's drop the last one:
+
+netstat -neo|grep ESTABLISHED|grep 143
+
+tcp        0      0 10.31.1.141:51292       192.168.0.1:143        ESTABLISHED 1000       2503048     off (0.00/0/0)
+tcp        0      0 10.31.1.141:51293       192.168.0.1:143        ESTABLISHED 1000       2502422     off (0.00/0/0)
+tcp        0      0 10.31.1.141:51436       192.168.0.1:143        ESTABLISHED 1000       2504789     off (0.00/0/0)
+                    ^.............copy this...............^
+
+Just copy the middle part of string (incl. tabs/spaces) to /proc/net/tcp_drop:
+
+
+echo "10.31.1.141:51436       192.168.0.1:143" > /proc/net/tcp_drop
+
+
+Now it'dead:
+
+netstat -neo|grep ESTABLISHED|grep 143
+tcp        0      0 10.31.1.141:51292       192.168.0.1:143        ESTABLISHED 1000       2503048     off (0.00/0/0)
+tcp        0      0 10.31.1.141:51293       192.168.0.1:143        ESTABLISHED 1000       2502422     off (0.00/0/0)
+
+
+IMAP client has received a socket error & will reconnect when needed.
+
+Example2:
+========
+
+Let's kill a TIME_WAIT socket.
+I've just created a TIME_WAIT socket with a netcat connection to localhost:8080:
+
+netstat -neo|grep TIME_WAIT
+tcp        0      0 127.0.0.1:34790         127.0.0.1:8080          TIME_WAIT   0          0           timewait (53.82/0/0)
+                    ^....................................^
+
+
+Here's how to kill it (it's better to say 'unschedule'):
+
+echo "127.0.0.1:34790         127.0.0.1:8080" > /proc/net/tcp_dro
+
+
+Let's see:
+
+netstat -neo|grep TIME_WAIT
+
+<no one here>
+
+
+What server/client code receives:
+================================
+
+All code which has been using the socket killed
+receives network error (it's like receiving TCP RESET):
+
+telnet localhost 8080
+Trying ::1...
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Connection closed by foreign host.
+
+
