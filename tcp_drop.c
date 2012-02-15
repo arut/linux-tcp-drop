@@ -13,6 +13,7 @@
 #include <linux/proc_fs.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/version.h>
 
 #ifdef CONFIG_NET_NS
 #include <net/net_namespace.h>
@@ -30,23 +31,28 @@
 static void
 tcp_drop_split(const char *s, int *len, __be16 *port)
 {
-	for(__be16 scale = 1; *len > 0; scale *= 10) {
+	__be16 scale = 1;
+
+	while (*len > 0) {
 		char c = *(s + --*len);
-		if (c == ':' || c < '0' || c > '9')
+		if (c == ':')
 			return;
+		if (c < '0' || c > '9')
+			continue;
 		*port += (c - '0') * scale;
+		scale *= 10;
 	}
 }
 
 static int 
 tcp_drop(const char *s, int len)
 {
-	char                      *d;
+	const char                *d;
 	__be16                     sport = 0, dport = 0;
 	int                        slen = 0, dlen = 0;
 	struct sock               *sk = NULL;
 	union {
-		__be32                 v4;
+		u32                    v4;
 		struct in6_addr        v6;
 	} saddr, daddr;
 
@@ -63,8 +69,31 @@ tcp_drop(const char *s, int len)
 	tcp_drop_split(s, &slen, &sport);
 	tcp_drop_split(d, &dlen, &dport);
 
-	if (in4_pton(s, slen, &saddr.v4, '\0', NULL)
-		&& in4_pton(d, dlen, &daddr.v4, '\0', NULL))
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
+	{
+		/* old kernel; no inX_pton :( 
+		   here's an ugly solution;
+		   don't want to pollute new-kernel code
+		   for this case */
+		char *ss, *dd;
+		ss = kmalloc(slen + 1, GFP_KERNEL);
+		dd = kmalloc(dlen + 1, GFP_KERNEL);
+		if (ss && dd) {
+			memcpy(ss, s, slen);
+			memcpy(dd, d, dlen);
+			ss[slen] = 0;
+			dd[dlen] = 0;
+			saddr.v4 = in_aton(ss);
+			daddr.v4 = in_aton(dd);
+			kfree(ss);
+			kfree(dd);
+		}
+	}
+
+#else
+
+	if (in4_pton(s, slen, (u8*)&saddr.v4, '\0', NULL)
+	 && in4_pton(d, dlen, (u8*)&daddr.v4, '\0', NULL))
 	{
 		sk = inet_lookup(
 #ifdef CONFIG_NET_NS
@@ -75,8 +104,8 @@ tcp_drop(const char *s, int len)
 				saddr.v4, htons(sport), 
 				0);
 
-	} else if (in6_pton(s, slen, &saddr.v6, '\0', NULL)
-		&& in6_pton(d, dlen, &daddr.v6, '\0', NULL))
+	} else if (in6_pton(s, slen, (u8*)&saddr.v6, '\0', NULL)
+		&& in6_pton(d, dlen, (u8*)&daddr.v6, '\0', NULL))
 	{
 		sk = inet6_lookup(
 #ifdef CONFIG_NET_NS
@@ -88,6 +117,8 @@ tcp_drop(const char *s, int len)
 				0);
 	}
 
+#endif /* old kernel */
+
 	if (!sk) {
 		printk(KERN_INFO "tcp_drop: not found");
 		return -1;
@@ -97,8 +128,8 @@ tcp_drop(const char *s, int len)
 			slen, s, sport, dlen, d, dport);
 
 	if (sk->sk_state == TCP_TIME_WAIT) {
-		inet_twsk_deschedule(inet_twsk(tw), &tcp_death_row);
-		inet_twsk_put(inet_twsk(tw));
+		inet_twsk_deschedule(inet_twsk(sk), &tcp_death_row);
+		inet_twsk_put(inet_twsk(sk));
 	} else {
 		tcp_done(sk);
 		sock_put(sk);
