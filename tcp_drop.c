@@ -59,7 +59,7 @@ tcp_drop(const char *s, int len)
 	int                        slen = 0, dlen = 0;
 	struct sock               *sk = NULL;
 	union {
-		u32                    v4;
+		__be32                 v4;
 		struct in6_addr        v6;
 	} saddr, daddr;
 
