@@ -29,18 +29,25 @@
 #define TCP_DROP_MAX_ARG  256
 
 static void
-tcp_drop_split(const char *s, int *len, __be16 *port)
+tcp_drop_split(const char **s, int *len, __be16 *port)
 {
 	__be16 scale = 1;
 
 	while (*len > 0) {
-		char c = *(s + --*len);
+		char c = *(*s + --*len);
 		if (c == ':')
-			return;
+			break;
 		if (c < '0' || c > '9')
 			continue;
 		*port += (c - '0') * scale;
 		scale *= 10;
+	}
+
+	if (*len >= 2 &&
+			**s == '[' && *(*s + *len - 1) == ']') 
+	{
+		++*s;
+		*len -= 2;
 	}
 }
 
@@ -66,8 +73,8 @@ tcp_drop(const char *s, int len)
 
 	dlen = len - dlen;
 
-	tcp_drop_split(s, &slen, &sport);
-	tcp_drop_split(d, &dlen, &dport);
+	tcp_drop_split(&s, &slen, &sport);
+	tcp_drop_split(&d, &dlen, &dport);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
 	{
