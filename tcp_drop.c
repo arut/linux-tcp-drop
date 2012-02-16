@@ -76,7 +76,7 @@ tcp_drop(const char *s, int len)
 	tcp_drop_split(&s, &slen, &sport);
 	tcp_drop_split(&d, &dlen, &dport);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 	{
 		/* old kernel; no inX_pton :( 
 		   here's an ugly solution;

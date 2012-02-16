@@ -85,6 +85,19 @@ netstat -n|grep TIME_WAIT
 
 <nothing here>
 
+IPv6 support:
+============
+
+If built for non-ancient (>2.6.19) kernel IPv6 is fully supported.
+Dropping IPv6 connections is done the same way as IPv4:
+
+echo "::1:34717               ::1:8080" > /proc/net/tcp_drop
+
+Standard representation of IPv6 address with port ([ipv6addr]:port)
+is also supported:
+
+echo "[::1]:34717               [::1]:8080" > /proc/net/tcp_drop
+
 
 What server/client code receives:
 ================================
