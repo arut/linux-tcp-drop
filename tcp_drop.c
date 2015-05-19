@@ -176,18 +176,29 @@ tcp_drop_init(void)
 
 	printk(KERN_DEBUG "tcp_drop: loading\n");
 
-	res = create_proc_entry(TCP_DROP_PROC, S_IWUSR | S_IWGRP, 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+	res = create_proc_entry(
+#else
+        static const struct file_operations wl_proc_fops = { 
+                .owner = THIS_MODULE, .write = tcp_drop_write_proc, };
+        res = proc_create(
+#endif
+                TCP_DROP_PROC, S_IWUSR | S_IWGRP, 
 #ifdef CONFIG_NET_NS
 		init_net.
 #endif
-		proc_net);
+		proc_net
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+                );
+        if (res) res->write_proc = tcp_drop_write_proc;
+#else
+                , &wl_proc_fops);
+#endif
 
 	if (!res) {
 		printk(KERN_ERR "tcp_drop: unable to register proc file\n");
 		return -ENOMEM;
 	}
-	
-	res->write_proc = tcp_drop_write_proc;
 
 	return 0;
 }
